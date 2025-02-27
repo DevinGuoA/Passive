@@ -19,9 +19,9 @@ By running `0main.do`, you are expected to get all the results of this replicati
  -  `2thomason` generates fund ownership percentage variables and merge all the data, and winsorize at 1%
 - `3tablei*` ($i=1,2,...,7$)ouput the corresponding table in Appel et al(2016)
 ## Key Process in identifying the type of mutual fund
-Following Appel et al.(2016), we first generate *passive flag=0* to indicates whether a mutual fund is a passive fund or not.
-And the strings we use to identify index funds are: Index, Idx, Indx, Ind_ (where_ indicates a space), Russell, S & P, S and P, S&P, SandP, SP, DOW, Dow, DJ, MSCI, Bloomberg, KBW, NASDAQ, NYSE, STOXX, FTSE, Wilshire, Morningstar, 100, 400, 500, 600, 900, 1000, 1500, 2000, and 5000.
-However, to fully capture the passive mutual fund and avoid the mismatch because of the case problems with letters, we first generate *fund_name* which is the lower case of the *fund_name* in MFLINK. Sepcifically,
+- Following Appel et al.(2016), we first generate *passive flag=0* to indicates whether a mutual fund is a passive fund or not.
+- And the strings we use to identify index funds are: Index, Idx, Indx, Ind_ (where_ indicates a space), Russell, S & P, S and P, S&P, SandP, SP, DOW, Dow, DJ, MSCI, Bloomberg, KBW, NASDAQ, NYSE, STOXX, FTSE, Wilshire, Morningstar, 100, 400, 500, 600, 900, 1000, 1500, 2000, and 5000.
+- However, to fully capture the passive mutual fund and avoid the mismatch because of the case problems with letters, we first generate *fund_name* which is the lower case of the *fund_name* in MFLINK. Sepcifically,
 ```
 replace passive_flag = 1 if regexm(fund_name, "index|idx|indx|ind_|russell|s & p|s and p|s&p|sandp|sp|dow|dj|msci|bloomberg|kbw|nasdaq|nyse|stoxx|ftse|wilshire|morningstar|100|400|500|600|900|1000|1500|2000|5000")
 ```
