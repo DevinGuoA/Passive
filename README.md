@@ -26,4 +26,7 @@ By running `0main.do`, you are expected to get all the results of this replicati
 replace passive_flag = 1 if regexm(fund_name, "index|idx|indx|ind_|russell|s & p|s and p|s&p|sandp|sp|dow|dj|msci|bloomberg|kbw|nasdaq|nyse|stoxx|ftse|wilshire|morningstar|100|400|500|600|900|1000|1500|2000|5000")
 ```
 the regular expression we used here ensures the clear match.
-
+- Then we use the data generating from above process (`homson_mflink_for_passive1.dta`) merge with `crsp_fund_summary.dta`, and
+```
+replace fund_type = "Unclassified" if _merge == 2
+```
