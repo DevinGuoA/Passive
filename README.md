@@ -17,6 +17,7 @@ By running `0main.do`, you are expected to get all the results of this replicati
  -  `2passive` generates heterogeneous ownership percentage variables
  -  `2roa` generates roa from the data in Compustat
  -  `2thomason` generates fund ownership percentage variables and merge all the data, and winsorize at 1%
+- `3table*` ouput the corresponding table in Appel et al(2016)
    
 
 
