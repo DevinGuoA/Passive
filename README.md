@@ -1,5 +1,6 @@
 # Passive
 ## How to replicate my write up
+Please see Appel et al.(2016) for detailed definitions of variables and also refer to `write up` for detailed sample construction.
 ### Raw data used
 `raw data`file includes all the raw data needed for replication. Detailed dataset descriptions are as following:
 - `crsp_fund_summary.dta`is monthly summary table in CRSP, serves as identifying the unclassified mutual fund.
