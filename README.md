@@ -4,7 +4,7 @@ Please see Appel et al.(2016) for detailed definitions of variables and also ref
 ### Raw data used
 `raw data`file includes all the raw data needed for replication. Detailed dataset descriptions are as following:
 - `crsp_fund_summary.dta`is monthly summary table in CRSP, serves as identifying the unclassified mutual fund.
-- `issdir.dta``issgov.dta``issvote.dta` includes all the ISS data needed for replication including variables like *Independent Director %*, *Poison Pill Removol*
+- `issdir.dta issgov.dta issvote.dta` includes all the ISS data needed for replication including variables like *Independent Director %*, *Poison Pill Removol*
 - `mflink1_raw.dta` and `mflink2_raw.dta` are the tables in MFLINK connecting Thomson and CRSP.
 - `R2000` includes the Russell 2000 Index
 - `thomson.dta` is fund-firm-time level data, including *shrout1* and *shrout2*, from which we generate *shrout*=*shrout2* and replace missing *shrout* with *1000shrout1* 
