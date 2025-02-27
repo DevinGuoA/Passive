@@ -30,3 +30,10 @@ the regular expression we used here ensures the clear match.
 ```
 replace fund_type = "Unclassified" if _merge == 2
 ```
+## Potential Problems in our replication
+To impute the missing reports before May 2005 like Appel et al(2016), we first conduct:
+```
+tsfill, full
+```
+to expend our dataset, because before May 2005, mutual fund are only required to report their holdings twice a year and what we need to deal with is not the missing value in the observations but the missing obersavtions in our dataset.
+Therefore, we need to conduct this step at the very beginning before merge the dataset with other dataset, which might leads to the missing value in other variables for imputed observations.
