@@ -1,0 +1,1983 @@
+--------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /Users/devin/Desktop/Passive/log/log20250227.log
+  log type:  text
+ opened on:  27 Feb 2025, 17:20:18
+
+. 
+. //************** Clean the dataset **************//
+. 
+. do "${root}/do file/1clean.do"
+
+. /***********************************************************************************************
+> This script:
+> By running this script, you are expected to:
+> - Generate all necessary variables
+> - Merge datasets to obtain required outputs
+> - Address missing values and remove outliers
+> ***********************************************************************************************/
+. 
+. clear all
+
+. set more off
+
+. 
+. //************** Clean the dataset **************//
+. 
+. do "${root}/do file/2iss_dir.do"
+
+. **********************************************************************************************
+. * Process ISS director data and compute the percentage of independent directors
+. **********************************************************************************************
+. 
+. use "${root}/raw data/issdir.dta", clear
+
+. 
+. * Compute the total number of directors per firm-year
+. bysort YEAR CUSIP: gen Total_Directors = _N
+
+. 
+. * Identify independent directors (classification "I") 
+. gen Independent_Directors = (CLASSIFICATION == "I")
+
+. bysort YEAR CUSIP: replace Independent_Directors = sum(Independent_Directors)
+(138412 real changes made)
+
+. bysort YEAR CUSIP: replace Independent_Directors = Independent_Directors[_N]
+(138315 real changes made)
+
+. 
+. * Compute the percentage of independent directors
+. gen Independent_Percentage = Independent_Directors / Total_Directors
+
+. 
+. * Keep only firm-year level data
+. keep YEAR CUSIP Independent_Percentage
+
+. duplicates drop
+
+Duplicates in terms of all variables
+
+(148,966 observations deleted)
+
+. 
+. save "${root}/processing data/issdir.dta", replace
+file /Users/devin/Desktop/Passive/processing data/issdir.dta saved
+
+. 
+. use "/Users/devin/Desktop/Passive/raw data/thomson.dta",clear
+
+. 
+. gen CUSIP=substr(cusip,1,6)
+(40,406 missing values generated)
+
+. 
+. gen YEAR=year(fdate)
+
+. 
+. duplicates drop cusip fdate,force
+
+Duplicates in terms of cusip fdate
+
+(37,549,932 observations deleted)
+
+. 
+. save "${root}/processing data/thomson_replicate.dta",replace
+file /Users/devin/Desktop/Passive/processing data/thomson_replicate.dta saved
+
+. 
+. use "${root}/processing data/thomson_replicate.dta",clear
+
+. merge m:1 CUSIP YEAR using "${root}/processing data/issdir.dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       418,080
+        from master                   415,645  (_merge==1)
+        from using                      2,435  (_merge==2)
+
+    Matched                            60,877  (_merge==3)
+    -----------------------------------------
+
+. 
+. drop if missing(shrout2)& missing(shrout1)
+(46,945 observations deleted)
+
+. egen mean_Independent_Percentage = mean(Independent_Percentage)
+
+. replace Independent_Percentage = mean_Independent_Percentage if missing(Independent_Percentage)
+(371,249 real changes made)
+
+. drop mean_Independent_Percentage
+
+. 
+. 
+. drop (_merge)
+
+. 
+. rename CUSIP CUSIP6
+
+. rename cusip CUSIP
+
+. 
+. gen qdate = qofd(fdate)
+
+. format qdate %tq
+
+. 
+. drop shrout1
+
+. drop shrout2
+
+. drop fundno
+
+. drop rdate
+
+. save "${root}/processing data/iss_dir_clean.dta",replace
+file /Users/devin/Desktop/Passive/processing data/iss_dir_clean.dta saved
+
+. use "${root}/processing data/iss_dir_clean.dta",clear
+
+. merge 1:1 CUSIP qdate using "/Users/devin/Desktop/Passive/processing data/ownership_final1.dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       428,982
+        from master                   428,798  (_merge==1)
+        from using                        184  (_merge==2)
+
+    Matched                             3,214  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge==1
+(428,798 observations deleted)
+
+. drop _merge
+
+. save "/Users/devin/Desktop/Passive/processing data/ownership_dir.dta",replace
+file /Users/devin/Desktop/Passive/processing data/ownership_dir.dta saved
+
+. 
+end of do-file
+
+. 
+. do "${root}/do file/2passive.do"
+
+. **********************************************************************************************
+. * Process Thomson (fund holdings data), adjust shrout variable, and save
+. **********************************************************************************************
+. 
+. * Load Thomson Reuters mutual fund holdings dataset
+. use "/Users/devin/Desktop/Passive/raw data/thomson.dta", clear
+
+. 
+. * Drop redundant date variable
+. drop rdate
+
+. 
+. * Adjust share outstanding (shrout) variable
+. gen shrout = shrout1 * 1000  // Convert millions to actual share count
+(661,268 missing values generated)
+
+. replace shrout = shrout2 if missing(shrout)  // Use shrout2 if shrout1 is missing
+(317,350 real changes made)
+
+. 
+. * Drop unnecessary variables
+. drop shrout1 shrout2
+
+. 
+. * Extract the month from the report date
+. gen month = month(fdate)
+
+. 
+. * Keep only observations from September
+. keep if month == 9
+(28,486,272 observations deleted)
+
+. 
+. * Drop missing CUSIP entries
+. drop if missing(cusip)
+(10,612 observations deleted)
+
+. 
+. * Save the processed Thomson dataset
+. save "/Users/devin/Desktop/Passive/processing data/thomson_for_passive.dta", replace
+file /Users/devin/Desktop/Passive/processing data/thomson_for_passive.dta saved
+
+. 
+. **********************************************************************************************
+. * Merge Thomson fund holdings with MFLINKS data to classify funds as passive or active
+. **********************************************************************************************
+. 
+. * Reload processed Thomson data
+. use "/Users/devin/Desktop/Passive/processing data/thomson_for_passive.dta", clear
+
+. 
+. * Merge with MFLINKS dataset using fund number and date
+. merge m:1 fundno fdate using "/Users/devin/Desktop/Passive/raw data/mflink2_raw.dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                     1,047,580
+        from master                         0  (_merge==1)
+        from using                  1,047,580  (_merge==2)
+
+    Matched                         9,529,570  (_merge==3)
+    -----------------------------------------
+
+. 
+. * Keep only matched observations
+. keep if _merge == 3
+(1,047,580 observations deleted)
+
+. drop _merge
+
+. 
+. * Drop redundant date variable
+. drop rdate
+
+. 
+. * Initialize passive flag variable
+. gen passive_flag = 0
+
+. 
+. * Convert fund names to lowercase for consistent regex matching
+. gen fund_name = lower(fundname)
+
+. 
+. * Identify index funds using common passive fund name indicators
+. replace passive_flag = 1 if regexm(fund_name, "index|idx|indx|ind_|russell|s & p|s and p|s&p|san
+> dp|sp|dow|dj|msci|bloomberg|kbw|nasdaq|nyse|stoxx|ftse|wilshire|morningstar|100|400|500|600|900|
+> 1000|1500|2000|5000")
+(1,587,627 real changes made)
+
+. 
+. * Save processed data with passive classification
+. save "/Users/devin/Desktop/Passive/processing data/thomson_mflink_for_passive.dta", replace
+file /Users/devin/Desktop/Passive/processing data/thomson_mflink_for_passive.dta saved
+
+. 
+. **********************************************************************************************
+. * Classify funds into Passive and Active categories
+. **********************************************************************************************
+. 
+. * Load processed Thomson-MFLINKS dataset
+. use "/Users/devin/Desktop/Passive/processing data/thomson_mflink_for_passive.dta", clear
+
+. 
+. * Drop observations with missing CUSIP
+. drop if missing(cusip)
+(0 observations deleted)
+
+. 
+. * Assign fund type based on passive classification
+. gen fund_type = "Passive" if passive_flag == 1
+(7,941,943 missing values generated)
+
+. replace fund_type = "Active" if passive_flag == 0
+(7,941,943 real changes made)
+
+. 
+. * Save the updated dataset
+. save "/Users/devin/Desktop/Passive/processing data/thomson_mflink_for_passive1.dta", replace
+file /Users/devin/Desktop/Passive/processing data/thomson_mflink_for_passive1.dta saved
+
+. 
+. **********************************************************************************************
+. * Merge with CRSP fund summary to classify unclassified funds
+. **********************************************************************************************
+. 
+. * Load CRSP fund summary dataset
+. use "/Users/devin/Desktop/Passive/raw data/crsp_fund_summary.dta", clear
+
+. 
+. * Remove duplicate fund numbers
+. duplicates drop crsp_fundno, force
+
+Duplicates in terms of crsp_fundno
+
+(738,324 observations deleted)
+
+. 
+. * Keep only relevant variables
+. keep crsp_fundno
+
+. 
+. * Rename variable for merging
+. rename crsp_fundno fundno
+
+. 
+. * Merge with the Thomson-MFLINKS dataset
+. merge 1:m fundno using "/Users/devin/Desktop/Passive/processing data/thomson_mflink_for_passive1
+> .dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                     6,272,863
+        from master                    25,285  (_merge==1)
+        from using                  6,247,578  (_merge==2)
+
+    Matched                         3,281,992  (_merge==3)
+    -----------------------------------------
+
+. 
+. * Classify unmatched funds as "Unclassified"
+. replace fund_type = "Unclassified" if _merge == 2
+variable fund_type was str7 now str12
+(6,247,578 real changes made)
+
+. 
+. * Drop unmatched observations from the CRSP dataset
+. drop if _merge == 1
+(25,285 observations deleted)
+
+. drop _merge
+
+. 
+. * Keep only necessary variables
+. keep fundno shrout fdate fund_type cusip
+
+. 
+. * Save ownership classification dataset
+. save "/Users/devin/Desktop/Passive/processing data/ownershippassive1.dta", replace
+file /Users/devin/Desktop/Passive/processing data/ownershippassive1.dta saved
+
+. 
+. **********************************************************************************************
+. * Aggregate fund shareholdings by classification (Active, Passive, Unclassified)
+. **********************************************************************************************
+. 
+. * Generate shareholding variables by fund type
+. gen shrout_active = shrout if fund_type == "Active"
+(6,773,974 missing values generated)
+
+. gen shrout_passive = shrout if fund_type == "Passive"
+(9,027,419 missing values generated)
+
+. gen shrout_unclassified = shrout if fund_type == "Unclassified"
+(3,329,910 missing values generated)
+
+. 
+. * Replace missing values with zero
+. replace shrout_active = 0 if missing(shrout_active)
+(6,773,974 real changes made)
+
+. replace shrout_passive = 0 if missing(shrout_passive)
+(9,027,419 real changes made)
+
+. replace shrout_unclassified = 0 if missing(shrout_unclassified)
+(3,329,910 real changes made)
+
+. 
+. * Aggregate shareholdings at the CUSIP-date level
+. collapse (sum) shrout_active shrout_passive shrout_unclassified, by(cusip fdate)
+
+. 
+. * Save the final ownership dataset
+. save "/Users/devin/Desktop/Passive/processing data/ownershippassive2.dta", replace
+file /Users/devin/Desktop/Passive/processing data/ownershippassive2.dta saved
+
+. 
+end of do-file
+
+. * "${root}/prepared data/ownershippassive2.dta" is generated
+. 
+. do "${root}/do file/2thomason.do"
+
+. /***********************************************************************************************
+> This script:
+> By running this script, you are expected to:
+> - Generate ownership percentage of mutual funds.
+> - Merge Thomson Reuters mutual fund data with CRSP stock data.
+> ***********************************************************************************************/
+. 
+. clear all
+
+. set more off
+
+. 
+. ***********************************************************************************************
+. * Step 1: Clean Thomson Mutual Fund Holdings Data
+. ***********************************************************************************************
+. 
+. * Load Thomson Reuters mutual fund holdings dataset
+. use "${root}/raw data/thomson.dta", clear
+
+. 
+. * Rename key variables for consistency
+. rename cusip CUSIP
+
+. rename shrout1 shares_million
+
+. rename shrout2 shares_thousand
+
+. 
+. * Generate total shares held by the fund
+. gen shares_held = shares_million * 1000 if !missing(shares_million)
+(661,268 missing values generated)
+
+. replace shares_held = shares_thousand if missing(shares_held)
+(317,350 real changes made)
+
+. 
+. * Drop unnecessary variables and missing CUSIP entries
+. drop shares_million shares_thousand
+
+. drop if missing(CUSIP)
+(40,406 observations deleted)
+
+. 
+. * Encode CUSIP for easier handling
+. encode CUSIP, gen(nCUSIP)
+
+. 
+. * Generate quarterly date variable
+. gen qdate = qofd(fdate)
+
+. format qdate %tq
+
+. 
+. * Set panel structure
+. duplicates drop nCUSIP qdate,force
+
+Duplicates in terms of nCUSIP qdate
+
+(37,509,577 observations deleted)
+
+. xtset nCUSIP qdate
+
+Panel variable: nCUSIP (unbalanced)
+ Time variable: qdate, 1996q4 to 2009q2, but with gaps
+         Delta: 1 quarter
+
+. 
+. * Remove duplicates and fill missing values where applicable
+. duplicates drop nCUSIP qdate, force
+
+Duplicates in terms of nCUSIP qdate
+
+(0 observations are duplicates)
+
+. xtset nCUSIP qdate
+
+Panel variable: nCUSIP (unbalanced)
+ Time variable: qdate, 1996q4 to 2009q2, but with gaps
+         Delta: 1 quarter
+
+. tsfill, full
+
+. bysort CUSIP (qdate): replace shares_held = shares_held[_n-1] if missing(shares_held) & qdate < 
+> yq(2004,2)
+(4844 real changes made)
+
+. 
+. * Extract 6-digit CUSIP prefix
+. gen CUSIP6 = substr(CUSIP,1,6)
+(1,192,300 missing values generated)
+
+. 
+. * Save cleaned Thomson data
+. save "${root}/raw data/thomson1.dta", replace
+file /Users/devin/Desktop/Passive/raw data/thomson1.dta saved
+
+. 
+. ***********************************************************************************************
+. * Step 2: Merge with ISS Director Data
+. ***********************************************************************************************
+. 
+. use "${root}/raw data/thomson1.dta", clear
+
+. rename CUSIP CUSIP8
+
+. rename CUSIP6 CUSIP
+
+. 
+. * Generate year variable
+. gen YEAR = year(fdate)
+(1,192,300 missing values generated)
+
+. 
+. * Merge with ISS director dataset
+. merge m:1 CUSIP YEAR using "${root}/processing data/issdir.dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                     1,610,329
+        from master                 1,607,894  (_merge==1)
+        from using                      2,435  (_merge==2)
+
+    Matched                            60,877  (_merge==3)
+    -----------------------------------------
+
+. drop _merge
+
+. save "${root}/raw data/thomson_issdir.dta", replace
+file /Users/devin/Desktop/Passive/raw data/thomson_issdir.dta saved
+
+. 
+. ***********************************************************************************************
+. * Step 3: Process CRSP Data for Market Capitalization
+. ***********************************************************************************************
+. 
+. use "${root}/raw data/crspmissing.dta", clear
+
+. rename date fdate
+
+. 
+. * Remove observations with non-positive prices
+. drop if PRC <= 0
+(48,238 observations deleted)
+
+. 
+. * Compute market capitalization
+. gen market_cap = 3 * PRC * SHROUT * 1000
+(36,286 missing values generated)
+
+. 
+. * Remove unnecessary variables
+. duplicates drop CUSIP fdate, force
+
+Duplicates in terms of CUSIP fdate
+
+(2,270 observations deleted)
+
+. drop ACPERM ACCOMP NWPERM
+
+. 
+. * Save processed market capitalization data
+. save "${root}/processing data/crsp_marketcap.dta", replace
+file /Users/devin/Desktop/Passive/processing data/crsp_marketcap.dta saved
+
+. 
+. ***********************************************************************************************
+. * Step 4: Merge Thomson and CRSP Data
+. ***********************************************************************************************
+. 
+. use "${root}/processing data/crsp_marketcap.dta", clear
+
+. gen CUSIP6 = substr(CUSIP,1,6)
+
+. rename CUSIP CUSIP8
+
+. rename CUSIP6 CUSIP
+
+. duplicates drop CUSIP fdate, force
+
+Duplicates in terms of CUSIP fdate
+
+(26,351 observations deleted)
+
+. 
+. * Merge with cleaned Thomson mutual fund data
+. merge 1:1 fdate CUSIP using "${root}/processing data/thomson_cleaned1.dta"
+(variable CUSIP was str6, now str8 to accommodate using data's values)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                     1,085,482
+        from master                   800,996  (_merge==1)
+        from using                    284,486  (_merge==2)
+
+    Matched                           164,192  (_merge==3)
+    -----------------------------------------
+
+. save "${root}/prepared data/thomson_cleaned_iss.dta", replace
+file /Users/devin/Desktop/Passive/prepared data/thomson_cleaned_iss.dta saved
+
+. 
+. ***********************************************************************************************
+. * Step 5: Compute Fund Ownership Percentages
+. ***********************************************************************************************
+. 
+. use "${root}/prepared data/thomson_cleaned_iss.dta", clear
+
+. 
+. gen adj_price = abs(PRC) * CFACPR
+(319,318 missing values generated)
+
+. 
+. gen imputed_value = (shares_held * 1000) * adj_price
+(1,087,931 missing values generated)
+
+. 
+. * Remove extreme and unreasonable values
+. drop if imputed_value > market_cap
+(785,469 observations deleted)
+
+. gen fund_holding_pct = imputed_value * 100 / market_cap
+(319,318 missing values generated)
+
+. drop if missing(fund_holding_pct)
+(319,318 observations deleted)
+
+. drop if shares_held > SHROUT
+(67,742 observations deleted)
+
+. drop if YEAR == 1997 | YEAR == 2007
+(13,077 observations deleted)
+
+. drop if missing(CIK)
+(53,697 observations deleted)
+
+. drop _merge
+
+. 
+. * Winsorize fund ownership percentage to remove outliers
+. winsor2 fund_holding_pct, cuts(1,99) replace
+
+. 
+. * Save final processed mutual fund data
+. save "${root}/processing data/mutualfund.dta", replace
+file /Users/devin/Desktop/Passive/processing data/mutualfund.dta saved
+
+. 
+. ***********************************************************************************************
+. * Step 6: Integrate with Russell 2000 Index Data
+. ***********************************************************************************************
+. 
+. use "${root}/processing data/mutualfund.dta", clear
+
+. use "/Users/devin/Desktop/Passive/raw data/R2000.dta", clear
+
+. rename Date fdate
+
+. gen qdate = qofd(fdate)
+
+. format qdate %tq
+
+. gen CUSIP8 = substr(CUSIP,1,8)
+
+. sort CUSIP8 qdate
+
+. 
+. gen month = month(fdate)
+
+. keep if month == 5 | month == 1 | month == 9 | month == 12
+(258,024 observations deleted)
+
+. 
+. * Merge Russell index data with mutual fund ownership data
+. merge 1:1 CUSIP8 qdate using "${root}/processing data/mutualfund.dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       120,245
+        from master                   118,985  (_merge==1)
+        from using                      1,260  (_merge==2)
+
+    Matched                             9,111  (_merge==3)
+    -----------------------------------------
+
+. keep if _merge == 3
+(120,245 observations deleted)
+
+. drop _merge
+
+. save "${root}/processing data/mutualfund_v1.dta", replace
+file /Users/devin/Desktop/Passive/processing data/mutualfund_v1.dta saved
+
+. 
+. ***********************************************************************************************
+. * Step 7: Compute Passive, Active, and Unclassified Fund Ownership
+. ***********************************************************************************************
+. 
+. use "${root}/processing data/mutualfund_v1.dta", clear
+
+. gen yearmonth = ym(year(fdate), month(fdate))
+
+. format yearmonth %tm
+
+. save "${root}/processing data/mutualfund_v2.dta", replace
+file /Users/devin/Desktop/Passive/processing data/mutualfund_v2.dta saved
+
+. 
+. use "/Users/devin/Desktop/Passive/raw data/russell_all.dta", clear
+
+. rename cusip CUSIP8
+
+. gen YEAR = floor(yearmonth / 12) + 1960
+
+. 
+. merge 1:m CUSIP8 YEAR using "${root}/processing data/mutualfund_v2.dta"
+(variable yearmonth was float, now double to accommodate using data's values)
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                        22,654
+        from master                    22,377  (_merge==1)
+        from using                        277  (_merge==2)
+
+    Matched                             8,834  (_merge==3)
+    -----------------------------------------
+
+. keep if _merge == 3
+(22,654 observations deleted)
+
+. drop _merge
+
+. save "${root}/processing data/mutualfund_v3.dta", replace
+file /Users/devin/Desktop/Passive/processing data/mutualfund_v3.dta saved
+
+. 
+. ***********************************************************************************************
+. * Step 8: Compute Fund Voting Behavior
+. ***********************************************************************************************
+. 
+. use "/Users/devin/Desktop/Passive/raw data/issvote.dta", clear
+
+. gen year = year(MeetingDate)
+
+. gen month = month(MeetingDate)
+
+. gen fiscal_year = year
+
+. replace fiscal_year = fiscal_year + 1 if month >= 7
+(9,496 real changes made)
+
+. 
+. gen total_votes = votedFor + votedAgainst + votedAbstain
+(2,130 missing values generated)
+
+. gen is_management = (sponsor == "Management")
+
+. collapse (sum) votedFor total_votes, by(CUSIP fiscal_year is_management)
+
+. gen support_rate = votedFor / total_votes
+(479 missing values generated)
+
+. gen support_rate_management = .
+(9,410 missing values generated)
+
+. replace support_rate_management = support_rate if is_management == 1
+(8,069 real changes made)
+
+. gen support_rate_shareholder = .
+(9,410 missing values generated)
+
+. replace support_rate_shareholder = support_rate if is_management == 0
+(862 real changes made)
+
+. collapse (mean) support_rate_management support_rate_shareholder, by(CUSIP fiscal_year)
+
+. 
+. gen CUSIP8 = substr(CUSIP,1,8)
+
+. rename fiscal_year YEAR
+
+. merge 1:m CUSIP8 YEAR using "${root}/processing data/mutualfund_v3.dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                        13,380
+        from master                     7,310  (_merge==1)
+        from using                      6,070  (_merge==2)
+
+    Matched                             2,764  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 1
+(7,310 observations deleted)
+
+. drop _merge
+
+. save "${root}/processing data/mutualfund_v4.dta", replace
+file /Users/devin/Desktop/Passive/processing data/mutualfund_v4.dta saved
+
+. 
+. ***********************************************************************************************
+. * Step 9: Compute Final Ownership Metrics
+. ***********************************************************************************************
+. 
+. use "/Users/devin/Desktop/Passive/processing data/ownershippassive2.dta", clear
+
+. rename cusip CUSIP8
+
+. gen YEAR = year(fdate)
+
+. merge 1:m CUSIP8 YEAR using "${root}/processing data/mutualfund_v4.dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       111,980
+        from master                   111,883  (_merge==1)
+        from using                         97  (_merge==2)
+
+    Matched                             8,737  (_merge==3)
+    -----------------------------------------
+
+. keep if _merge == 3
+(111,980 observations deleted)
+
+. drop _merge
+
+. 
+. gen passive_pct = shrout_passive * 1000 * PRC / market_cap
+
+. gen active_pct = shrout_active * 1000 * PRC / market_cap
+
+. gen unclassified_pct = shrout_unclassified * 1000 * PRC / market_cap
+
+. 
+. save "${root}/prepared data/mutualfund_v1.dta", replace
+file /Users/devin/Desktop/Passive/prepared data/mutualfund_v1.dta saved
+
+. 
+end of do-file
+
+. * "${root}/processing data/mutualfund.dta" is generated
+. 
+. do "${root}/do file/2roa.do"
+
+. /***********************************************************************************************
+> This script:
+> By running this script, you are expected to:
+> - Merge ROA with maindataset
+> ***********************************************************************************************/
+. clear all
+
+. set more off
+
+. use "/Users/devin/Desktop/Passive/raw data/roa.dta",clear
+
+. gen CUSIP8=substr(cusip,1,8)
+(44 missing values generated)
+
+. gen qdate=qofd(datadate)
+
+. format qdate %tq
+
+. duplicates drop qdate CUSIP8,force
+
+Duplicates in terms of qdate CUSIP8
+
+(816 observations deleted)
+
+. gen roa=niq/atq
+(69,842 missing values generated)
+
+. merge 1:1 qdate CUSIP8 using "${root}/prepared data/mutualfund_v2.dta"
+
+    Result                      Number of obs
+    -----------------------------------------
+    Not matched                       464,088
+        from master                   463,319  (_merge==1)
+        from using                        769  (_merge==2)
+
+    Matched                             5,649  (_merge==3)
+    -----------------------------------------
+
+. keep if _merge==3
+(464,088 observations deleted)
+
+. drop _merge
+
+. drop if missing(roa)
+(13 observations deleted)
+
+. save  "${root}/prepared data/mutualfund_v3.dta",replace
+file /Users/devin/Desktop/Passive/prepared data/mutualfund_v3.dta saved
+
+. 
+end of do-file
+
+. * "${root}/prepared data/mutualfund_v2.dta" is generated
+. 
+. use "${root}/prepared data/mutualfund_v3.dta",clear
+
+. keep CUSIP8 yearmonth qdate DUALCLASS PPILL LSPMT r2000 switch2to1 switch1to2 Russell2000 Indepe
+> ndent_Percentage fund_holding_pct active_pct passive_pct unclassified_pct support_rate_managemen
+> t support_rate_shareholder adj_mrktvalue roa YEAR market_cap nCUSIP
+
+. replace passive_pct=. if missing(unclassified_pct)
+(46 real changes made, 46 to missing)
+
+. replace active_pct=. if missing(unclassified_pct)
+(46 real changes made, 46 to missing)
+
+. label variable fund_holding_pct "Total mutual fund ownership \%"
+
+. label variable passive_pct "Passive ownership \%"
+
+. label variable active_pct "Active ownership \%"
+
+. label variable unclassified_pct "Unclassified ownership \%"
+
+. label variable Independent_Percentage "Independent director \%"
+
+. label variable PPILL"Poison pill removal"
+
+. label variable LSPMT"Greater ability to call special meeting"
+
+. label variable DUALCLASS "Indicator for dual class shares"
+
+. label variable support_rate_management "Mngt. proposal support \%"
+
+. label variable support_rate_shareholder "Shareholder gov. proposal support \%"
+
+. label variable r2000 "R2000"
+
+. label variable roa "ROA"
+
+. winsor2 fund_holding_pct,cuts(1,99) replace
+
+. winsor2 passive_pct,cuts(1,99) replace
+
+. winsor2 active_pct,cuts(1,99) replace
+
+. winsor2 unclassified_pct,cuts(1,99) replace
+
+. winsor2 Independent_Percentage,cuts(1,99)replace
+
+. winsor2 PPILL,cuts(1,99)replace
+
+. winsor2 LSPMT,cuts(1,99)replace
+
+. winsor2 support_rate_management,cuts(1,99)replace
+
+. winsor2 support_rate_shareholder,cuts(1,99)replace
+
+. winsor2 roa,cuts(1,99)replace
+
+. winsor2 adj_mrktvalue,cuts(1,99)replace
+
+. winsor2 market_cap,cuts(1,99)replace
+
+. sort YEAR adj_mrktvalue, stable
+
+. bysort YEAR (adj_mrktvalue): gen firm_rank = _n
+
+. gen in_bandwidth = (firm_rank >= 751 & firm_rank <= 1250)
+
+. gen lnmarketcap=ln(market_cap)
+
+. gen lnmarketcap_2=lnmarketcap*lnmarketcap
+
+. gen lnmarketcap_3=lnmarketcap*lnmarketcap_2
+
+. gen lnfloat=ln(adj_mrktvalue)
+
+. winsor2 lnfloat,cuts(1,99)replace
+
+. winsor2 lnmarketcap,cuts(1,99)replace
+
+. winsor2 lnmarketcap_2,cuts(1,99)replace
+
+. winsor2 lnmarketcap_3,cuts(1,99)replace
+
+. save "${root}/prepared data/mutualfund_v4.dta",replace
+file /Users/devin/Desktop/Passive/prepared data/mutualfund_v4.dta saved
+
+. 
+end of do-file
+
+. 
+. //************** Results out put **************//
+. 
+. do "${root}/do file/3table1.do"
+
+. **********************************************************************************************
+. * This Script is expected to output the Table 1
+. **********************************************************************************************
+. 
+. use "${root}/prepared data/mutualfund_v4.dta",clear
+
+. 
+. local describelist fund_holding_pct passive_pct active_pct unclassified_pct Independent_Percenta
+> ge PPILL LSPMT DUALCLASS support_rate_management support_rate_shareholder roa
+
+. 
+. estpost tabstat `describelist', statistics(n mean median sd) columns(statistics)
+
+Summary statistics: count mean p50 sd
+     for variables: fund_holding_pct passive_pct active_pct unclassified_pct Independent_Percentag
+> e PPILL LSPMT DUALCLASS support_rate_management support_rate_shareholder roa
+
+             |  e(count)    e(mean)     e(p50)      e(sd) 
+-------------+--------------------------------------------
+fund_holdi~t |      5636   32.63347    33.1847   3.012223 
+ passive_pct |      2924   3.130672   1.316188   5.223634 
+  active_pct |      2924   18.93763   19.01944   8.238875 
+unclassifi~t |      2924   1.985592   1.322973   2.069448 
+Independen~e |      4580   .6612205   .6666667   .1731521 
+       PPILL |      5636   .5491483          1   .4976227 
+       LSPMT |      5636   .4160752          0     .49295 
+   DUALCLASS |      5636   .1176366          0   .3222059 
+support_ra~t |      1901   .9752762   .9890539   .0381145 
+support_ra~r |       287   .2857874   .1935861   .2332229 
+         roa |      5636   .0077455   .0099559   .0288065 
+
+. est store a
+
+. 
+. esttab a using "${root}/output/table1_raw.tex", ///
+>     replace ///
+>     collabels(\multicolumn{1}{c}{{N}} \multicolumn{1}{c}{{Mean}} \multicolumn{1}{c}{{Median}} \m
+> ulticolumn{1}{c}{{St.Dev}}) ///
+>     cells("count(fmt(0)) mean(fmt(3)) p50(fmt(3)) sd(fmt(3))") /// 
+>     label noobs booktabs ///
+>     alignment(c)  // 
+(output written to /Users/devin/Desktop/Passive/output/table1_raw.tex)
+
+. 
+. 
+end of do-file
+
+. 
+. do "${root}/do file/3table2.do"
+
+. **********************************************************************************************
+. * This Script is expected to output the Table 2
+. **********************************************************************************************
+. use "${root}/prepared data/mutualfund_v4.dta",clear
+
+. local xvariable r2000 lnmarketcap lnmarketcap_2 lnmarketcap_3 lnfloat
+
+. reg fund_holding_pct `xvariable'  i.YEAR if in_bandwidth==1
+
+      Source |       SS           df       MS      Number of obs   =     1,336
+-------------+----------------------------------   F(8, 1327)      =      1.37
+       Model |  133.585422         8  16.6981778   Prob > F        =    0.2056
+    Residual |  16185.8505     1,327  12.1973252   R-squared       =    0.0082
+-------------+----------------------------------   Adj R-squared   =    0.0022
+       Total |  16319.4359     1,335  12.2242966   Root MSE        =    3.4925
+
+-------------------------------------------------------------------------------
+fund_holdin~t | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]
+--------------+----------------------------------------------------------------
+        r2000 |  -.2595684   .3295676    -0.79   0.431    -.9060988     .386962
+  lnmarketcap |   79.29049   100.6678     0.79   0.431     -118.195     276.776
+lnmarketcap_2 |  -3.725054   4.449113    -0.84   0.403    -12.45312    5.003007
+lnmarketcap_3 |   .0577198   .0653512     0.88   0.377    -.0704832    .1859227
+      lnfloat |    .377612   .4618021     0.82   0.414    -.5283298    1.283554
+              |
+         YEAR |
+        2002  |  -.1697546   .4913333    -0.35   0.730    -1.133629    .7941201
+        2004  |   .1449018   .2983319     0.49   0.627    -.4403517    .7301554
+        2006  |   .4219366   .3512715     1.20   0.230    -.2671715    1.111045
+              |
+        _cons |   -529.363   759.4214    -0.70   0.486     -2019.16    960.4344
+-------------------------------------------------------------------------------
+
+. est store a
+
+. 
+. reg active_pct `xvariable' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.1532
+                                                Root MSE          =     7.3202
+
+                                (Std. err. adjusted for 168 clusters in CUSIP8)
+-------------------------------------------------------------------------------
+              |               Robust
+   active_pct | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+--------------+----------------------------------------------------------------
+        r2000 |  -2.623065   1.834662    -1.43   0.155    -6.245184    .9990539
+  lnmarketcap |  -4058.131    2774.37    -1.46   0.145    -9535.488    1419.227
+lnmarketcap_2 |   186.6656   128.9917     1.45   0.150    -67.99906    441.3302
+lnmarketcap_3 |  -2.862639   1.998651    -1.43   0.154    -6.808518     1.08324
+      lnfloat |   4.753337   2.395243     1.98   0.049     .0244789    9.482195
+              |
+         YEAR |
+        2004  |   7.408329   1.728066     4.29   0.000     3.996657       10.82
+              |
+        _cons |   29364.57   19874.65     1.48   0.141    -9873.368    68602.51
+-------------------------------------------------------------------------------
+
+. est store b
+
+. 
+. reg passive_pct `xvariable' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.2543
+                                                Root MSE          =      7.222
+
+                                (Std. err. adjusted for 168 clusters in CUSIP8)
+-------------------------------------------------------------------------------
+              |               Robust
+  passive_pct | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+--------------+----------------------------------------------------------------
+        r2000 |  -2.364647   1.819198    -1.30   0.195    -5.956238    1.226943
+  lnmarketcap |  -645.0609   2675.202    -0.24   0.810    -5926.635    4636.514
+lnmarketcap_2 |   30.42052    124.403     0.24   0.807    -215.1847    276.0257
+lnmarketcap_3 |  -.4781866   1.927299    -0.25   0.804    -4.283197    3.326823
+      lnfloat |   5.749866   2.376331     2.42   0.017     1.058345    10.44139
+              |
+         YEAR |
+        2004  |  -2.601526   1.909449    -1.36   0.175    -6.371295    1.168243
+              |
+        _cons |   4487.135   19169.12     0.23   0.815     -33357.9    42332.17
+-------------------------------------------------------------------------------
+
+. est store c
+
+. 
+. reg unclassified_pct `xvariable' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.1820
+                                                Root MSE          =     2.0758
+
+                                (Std. err. adjusted for 168 clusters in CUSIP8)
+-------------------------------------------------------------------------------
+              |               Robust
+unclassifie~t | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+--------------+----------------------------------------------------------------
+        r2000 |   -.869999   .5065317    -1.72   0.088     -1.87003    .1300319
+  lnmarketcap |    353.746   527.1071     0.67   0.503    -686.9063    1394.398
+lnmarketcap_2 |   -16.2216   24.51366    -0.66   0.509    -64.61822    32.17501
+lnmarketcap_3 |   .2477091   .3797742     0.65   0.515    -.5020682    .9974863
+      lnfloat |     .67326   .5522647     1.22   0.225    -.4170602     1.76358
+              |
+         YEAR |
+        2004  |   -.958461   .4735108    -2.02   0.045      -1.8933   -.0236224
+              |
+        _cons |  -2574.092    3776.94    -0.68   0.496     -10030.8    4882.612
+-------------------------------------------------------------------------------
+
+. est store d
+
+. 
+. esttab a b c d using "${root}/output/table2_raw.tex", ///
+>     replace ///
+>     keep(r2000) /// 
+>     order(r2000) ///
+>     b(3) se(3) /// 
+>     star(* 0.10 ** 0.05 *** 0.01) /// 
+>     mtitles("All mutual funds" "Passive" "Active" "Unclassified") ///
+>     eqlabels(none) ///
+>     refcat(r2000 "\textit{R2000}") ///
+>     stats(N_firms N obs r2, ///
+>           labels("\# of firms" "Observations" "\textit{R-squared}") ///
+>           fmt(0 0 2)) ///
+>     label booktabs alignment(c) ///
+>     compress
+(output written to /Users/devin/Desktop/Passive/output/table2_raw.tex)
+
+. 
+end of do-file
+
+. 
+. do "${root}/do file/3table3.do"
+
+. **********************************************************************************************
+. * This Script is expected to output the Table 3
+. **********************************************************************************************
+. use "${root}/prepared data/mutualfund_v4.dta",clear
+
+. local xvariable1 r2000 lnmarketcap lnfloat
+
+. local xvariable2 r2000 lnmarketcap lnmarketcap_2 lnfloat
+
+. local xvariable3 r2000 lnmarketcap lnmarketcap_2 lnmarketcap_3 lnfloat
+
+. sum passive_pct
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ passive_pct |      2,924    3.130672    5.223634          0   26.92839
+
+. gen passive_scaled = passive_pct / r(sd)
+(2,712 missing values generated)
+
+. label variable passive_scaled "Passive \% scaled by its sample standard deviation"
+
+. reg passive_scaled `xvariable1' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(4, 167)         =      17.91
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.2537
+                                                Root MSE          =     1.3796
+
+                               (Std. err. adjusted for 168 clusters in CUSIP8)
+------------------------------------------------------------------------------
+             |               Robust
+passive_sc~d | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+-------------+----------------------------------------------------------------
+       r2000 |  -.4900623   .3356321    -1.46   0.146    -1.152691    .1725664
+ lnmarketcap |  -.0918455   .3176589    -0.29   0.773    -.7189902    .5352991
+     lnfloat |   1.066364   .4372272     2.44   0.016      .203159    1.929569
+             |
+        YEAR |
+       2004  |  -.5098579   .3600322    -1.42   0.159    -1.220659    .2009432
+             |
+       _cons |  -11.36151   5.945552    -1.91   0.058    -23.09964     .376624
+------------------------------------------------------------------------------
+
+. est store table31
+
+. reg passive_scaled `xvariable2' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =      15.18
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.2540
+                                                Root MSE          =     1.3811
+
+                                (Std. err. adjusted for 168 clusters in CUSIP8)
+-------------------------------------------------------------------------------
+              |               Robust
+passive_sca~d | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+--------------+----------------------------------------------------------------
+        r2000 |  -.4689366   .3392317    -1.38   0.169    -1.138672    .2007987
+  lnmarketcap |   3.412932   11.66041     0.29   0.770    -19.60788    26.43374
+lnmarketcap_2 |   -.081834   .2718131    -0.30   0.764    -.6184668    .4547987
+      lnfloat |   1.104841   .4500676     2.45   0.015     .2162855    1.993396
+              |
+         YEAR |
+        2004  |  -.5009448   .3662768    -1.37   0.173    -1.224074    .2221849
+              |
+        _cons |  -49.42813   126.5456    -0.39   0.697    -299.2634    200.4071
+-------------------------------------------------------------------------------
+
+. est store table32
+
+. reg passive_scaled `xvariable3' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.2543
+                                                Root MSE          =     1.3826
+
+                                (Std. err. adjusted for 168 clusters in CUSIP8)
+-------------------------------------------------------------------------------
+              |               Robust
+passive_sca~d | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+--------------+----------------------------------------------------------------
+        r2000 |  -.4526824   .3482631    -1.30   0.195    -1.140248    .2348833
+  lnmarketcap |  -123.4889    512.138    -0.24   0.810    -1134.588    887.6102
+lnmarketcap_2 |   5.823632   23.81559     0.24   0.807     -41.1948    52.84207
+lnmarketcap_3 |  -.0915429   .3689599    -0.25   0.804    -.8199697    .6368839
+      lnfloat |   1.100741   .4549192     2.42   0.017      .202607    1.998874
+              |
+         YEAR |
+        2004  |    -.49803   .3655403    -1.36   0.175    -1.219706    .2236456
+              |
+        _cons |   859.0064   3669.713     0.23   0.815    -6386.002    8104.015
+-------------------------------------------------------------------------------
+
+. est store table33
+
+. esttab table31 table32 table33 using "${root}/output/table3_raw.tex", ///
+>     replace ///
+>     se star(* 0.10 ** 0.05 *** 0.01) ///
+>     b(3) se(3) ///
+>     mtitles("(1)" "(2)" "(3)") ///
+>     label booktabs ///
+>     alignment(c) ///
+>     keep(r2000) ///
+>     order(r2000) ///
+>     stats(bandwidth poly_order float_control year_fixed N_firms N r2, ///
+>           labels("Bandwidth" "Polynomial order, \(N\)" "Float control" "Year fixed effects" ///
+>                  "# of firms" "Observations" "\textit{R-squared}") fmt(0 0 0 0 0 0 2)) ///
+>     title("\textit{Dependent variable =} & \textbf{Passive \% scaled by its sample standard devi
+> ation}") ///
+> 
+(output written to /Users/devin/Desktop/Passive/output/table3_raw.tex)
+
+. 
+. 
+. 
+end of do-file
+
+. 
+. do "${root}/do file/3table4.do"
+
+. **********************************************************************************************
+. * This Script is expected to output the Table 4
+. **********************************************************************************************
+. use "${root}/prepared data/mutualfund_v4.dta",clear
+
+. sum passive_pct
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ passive_pct |      2,924    3.130672    5.223634          0   26.92839
+
+. gen passive_scaled = passive_pct / r(sd)
+(2,712 missing values generated)
+
+. local xvariable1 passive_scaled lnmarketcap lnfloat
+
+. local xvariable2 passive_scaled lnmarketcap lnmarketcap_2 lnfloat
+
+. local xvariable3 passive_scaled lnmarketcap lnmarketcap_2 lnmarketcap_3 lnfloat
+
+. label variable passive_scaled "Passive\%"
+
+. reg Independent_Percentage `xvariable1' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        312
+                                                F(4, 134)         =       2.78
+                                                Prob > F          =     0.0295
+                                                R-squared         =     0.0710
+                                                Root MSE          =     .18952
+
+                                 (Std. err. adjusted for 135 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0066377    .011925    -0.56   0.579    -.0302234    .0169479
+   lnmarketcap |  -.1013435    .055327    -1.83   0.069    -.2107707    .0080837
+       lnfloat |   .1789396   .0631627     2.83   0.005     .0540148    .3038644
+               |
+          YEAR |
+         2004  |   .1119946    .047977     2.33   0.021     .0171045    .2068848
+               |
+         _cons |   .1875141   .7266893     0.26   0.797    -1.249751    1.624779
+--------------------------------------------------------------------------------
+
+. est store table41
+
+. reg Independent_Percentage `xvariable2' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        312
+                                                F(5, 134)         =       2.61
+                                                Prob > F          =     0.0277
+                                                R-squared         =     0.0827
+                                                Root MSE          =     .18863
+
+                                 (Std. err. adjusted for 135 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0078614   .0121676    -0.65   0.519    -.0319267     .016204
+   lnmarketcap |   2.332928   1.797196     1.30   0.196    -1.221613    5.887468
+ lnmarketcap_2 |  -.0568645   .0424892    -1.34   0.183    -.1409008    .0271718
+       lnfloat |   .2059826   .0670195     3.07   0.003     .0734298    .3385355
+               |
+          YEAR |
+         2004  |    .127725   .0488625     2.61   0.010     .0310836    .2243665
+               |
+         _cons |  -26.23961   19.56628    -1.34   0.182    -64.93831    12.45909
+--------------------------------------------------------------------------------
+
+. est store table42
+
+. reg Independent_Percentage `xvariable3' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        312
+                                                F(5, 134)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.0830
+                                                Root MSE          =     .18891
+
+                                 (Std. err. adjusted for 135 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0077584   .0122223    -0.63   0.527    -.0319321    .0164152
+   lnmarketcap |   18.16371   54.59566     0.33   0.740    -89.81699    126.1444
+ lnmarketcap_2 |  -.7928743   2.546083    -0.31   0.756    -5.828583    4.242835
+ lnmarketcap_3 |   .0113981   .0395636     0.29   0.774    -.0668518    .0896479
+       lnfloat |   .2080293   .0664698     3.13   0.002     .0765636     .339495
+               |
+          YEAR |
+         2004  |   .1263655   .0503969     2.51   0.013     .0266891    .2260418
+               |
+         _cons |  -139.6892   389.9385    -0.36   0.721    -910.9198    631.5413
+--------------------------------------------------------------------------------
+
+. est store table43
+
+. 
+. esttab table41 table42 table43 using "${root}/output/table4_raw.tex", ///
+>     replace ///
+>     se star(* 0.10 ** 0.05 *** 0.01) ///
+>     b(3) se(3) ///
+>     mtitles("(1)" "(2)" "(3)") ///
+>     label booktabs ///
+>     alignment(c) ///
+>     keep(passive_scaled) ///
+>     order(passive_scaled) ///
+>     stats(bandwidth poly_order float_control year_fixed N_firms N r2, ///
+>           labels("Bandwidth" "Polynomial order, \(N\)" "Float control" "Year fixed effects" ///
+>                  "# of firms" "Observations" "\textit{R-squared}") fmt(0 0 0 0 0 0 2)) ///
+>     title("\textit{Dependent variable =} & \textbf{Passive \% scaled by its sample standard devi
+> ation}") ///
+> 
+(output written to /Users/devin/Desktop/Passive/output/table4_raw.tex)
+
+. 
+. 
+end of do-file
+
+. 
+. do "${root}/do file/3table5.do"
+
+. **********************************************************************************************
+. * This Script is expected to output the Table 5
+. **********************************************************************************************
+. use "${root}/prepared data/mutualfund_v4.dta",clear
+
+. sum passive_pct
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ passive_pct |      2,924    3.130672    5.223634          0   26.92839
+
+. gen passive_scaled = passive_pct / r(sd)
+(2,712 missing values generated)
+
+. local xvariable1 passive_scaled lnmarketcap lnfloat
+
+. local xvariable2 passive_scaled lnmarketcap lnmarketcap_2 lnfloat
+
+. local xvariable3 passive_scaled lnmarketcap lnmarketcap_2 lnmarketcap_3 lnfloat
+
+. label variable passive_scaled "Passive\%"
+
+. reg Independent_Percentage `xvariable1' i.YEAR if in_bandwidth==1 & YEAR<=2002, cluster(CUSIP)
+note: 1998.YEAR omitted because of collinearity.
+
+Linear regression                               Number of obs     =        255
+                                                F(3, 110)         =       2.09
+                                                Prob > F          =     0.1056
+                                                R-squared         =     0.0492
+                                                Root MSE          =     .19595
+
+                                 (Std. err. adjusted for 111 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |   .0021738   .0130877     0.17   0.868     -.023763    .0281105
+   lnmarketcap |  -.0950335   .0606271    -1.57   0.120    -.2151822    .0251153
+       lnfloat |   .1576709    .067752     2.33   0.022     .0234022    .2919395
+               |
+          YEAR |
+         1998  |          0  (omitted)
+               |
+         _cons |   .3429851   .7635782     0.45   0.654    -1.170248    1.856218
+--------------------------------------------------------------------------------
+
+. est store table41
+
+. reg Independent_Percentage `xvariable2' i.YEAR if in_bandwidth==1 & YEAR<=2002, cluster(CUSIP)
+note: 1998.YEAR omitted because of collinearity.
+
+Linear regression                               Number of obs     =        255
+                                                F(4, 110)         =       1.80
+                                                Prob > F          =     0.1345
+                                                R-squared         =     0.0609
+                                                Root MSE          =     .19512
+
+                                 (Std. err. adjusted for 111 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |   .0012467   .0132612     0.09   0.925    -.0250338    .0275272
+   lnmarketcap |   2.301657   2.042704     1.13   0.262    -1.746503    6.349817
+ lnmarketcap_2 |  -.0559563   .0482824    -1.16   0.249    -.1516407    .0397282
+       lnfloat |    .186724   .0749971     2.49   0.014     .0380973    .3353508
+               |
+          YEAR |
+         1998  |          0  (omitted)
+               |
+         _cons |  -25.72624   22.30961    -1.15   0.251    -69.93865    18.48617
+--------------------------------------------------------------------------------
+
+. est store table42
+
+. reg Independent_Percentage `xvariable3' i.YEAR if in_bandwidth==1 & YEAR<=2002, cluster(CUSIP)
+note: 1998.YEAR omitted because of collinearity.
+
+Linear regression                               Number of obs     =        255
+                                                F(4, 110)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.0615
+                                                Root MSE          =     .19546
+
+                                 (Std. err. adjusted for 111 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |   .0014709   .0133022     0.11   0.912    -.0248909    .0278328
+   lnmarketcap |   21.13321   56.16704     0.38   0.707    -90.17667    132.4431
+ lnmarketcap_2 |   -.931188   2.621249    -0.36   0.723    -6.125888    4.263512
+ lnmarketcap_3 |   .0135493   .0407643     0.33   0.740    -.0672359    .0943346
+       lnfloat |   .1896299   .0742557     2.55   0.012     .0424725    .3367873
+               |
+          YEAR |
+         1998  |          0  (omitted)
+               |
+         _cons |  -160.7297   400.8696    -0.40   0.689    -955.1592    633.6997
+--------------------------------------------------------------------------------
+
+. est store table43
+
+. reg Independent_Percentage `xvariable1' i.YEAR if in_bandwidth==1 & YEAR>=2003, cluster(CUSIP)
+note: 2004.YEAR omitted because of collinearity.
+
+Linear regression                               Number of obs     =         57
+                                                F(3, 24)          =       4.52
+                                                Prob > F          =     0.0120
+                                                R-squared         =     0.3322
+                                                Root MSE          =     .13995
+
+                                  (Std. err. adjusted for 25 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0563647   .0184902    -3.05   0.006    -.0945265   -.0182029
+   lnmarketcap |  -.1896429   .0825752    -2.30   0.031    -.3600697   -.0192161
+       lnfloat |   .4563635   .1588237     2.87   0.008     .1285674    .7841596
+               |
+          YEAR |
+         2004  |          0  (omitted)
+               |
+         _cons |  -1.672717   1.572729    -1.06   0.298     -4.91867    1.573236
+--------------------------------------------------------------------------------
+
+. est store table44
+
+. reg Independent_Percentage `xvariable2' i.YEAR if in_bandwidth==1 & YEAR>=2003, cluster(CUSIP)
+note: 2004.YEAR omitted because of collinearity.
+
+Linear regression                               Number of obs     =         57
+                                                F(4, 24)          =      10.59
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.3393
+                                                Root MSE          =     .14054
+
+                                  (Std. err. adjusted for 25 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0577373   .0180868    -3.19   0.004    -.0950666   -.0204081
+   lnmarketcap |   4.630509   7.287963     0.64   0.531    -10.41111    19.67212
+ lnmarketcap_2 |  -.1138318   .1708454    -0.67   0.512    -.4664393    .2387758
+       lnfloat |    .433599   .1838726     2.36   0.027     .0541047    .8130933
+               |
+          YEAR |
+         2004  |          0  (omitted)
+               |
+         _cons |  -52.36595   75.49512    -0.69   0.495    -208.1802    103.4483
+--------------------------------------------------------------------------------
+
+. est store table45
+
+. reg Independent_Percentage `xvariable3' i.YEAR if in_bandwidth==1 & YEAR>=2003, cluster(CUSIP)
+note: 2004.YEAR omitted because of collinearity.
+
+Linear regression                               Number of obs     =         57
+                                                F(2, 24)          =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.3458
+                                                Root MSE          =     .14121
+
+                                  (Std. err. adjusted for 25 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+Independent_~e | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0603981   .0199933    -3.02   0.006    -.1016622   -.0191341
+   lnmarketcap |   376.5923   537.3108     0.70   0.490    -732.3627    1485.547
+ lnmarketcap_2 |  -17.67813   25.40607    -0.70   0.493    -70.11369    34.75742
+ lnmarketcap_3 |   .2763798   .4002982     0.69   0.497    -.5497951    1.102555
+       lnfloat |   .4905517   .2370528     2.07   0.049     .0012987    .9798047
+               |
+          YEAR |
+         2004  |          0  (omitted)
+               |
+         _cons |  -2678.048   3788.499    -0.71   0.486    -10497.12    5141.029
+--------------------------------------------------------------------------------
+
+. est store table46
+
+. 
+. esttab table41 table42 table43 table44 table45 table46 using "${root}/output/table5_raw.tex", //
+> /
+>     replace ///
+>     se star(* 0.10 ** 0.05 *** 0.01) ///
+>     b(3) se(3) ///
+>     mtitles("(1)" "(2)" "(3)" "(4)" "(5)" "(6)") ///
+>     label booktabs ///
+>     alignment(c) ///
+>     keep(passive_scaled) ///
+>     order(passive_scaled) ///
+>     stats(bandwidth poly_order float_control year_fixed N_firms N r2, ///
+>           labels("Bandwidth" "Polynomial order, \(N\)" "Float control" "Year fixed effects" ///
+>                  "# of firms" "Observations" "\textit{R-squared}") fmt(0 0 0 0 0 0 2)) ///
+>     prehead("\multicolumn{7}{c}{\textit{Dependent variable = Independent director \%}} \\" ///
+>             "\cmidrule(lr){2-7}" ///
+>             "& \multicolumn{3}{c}{\textit{Sample years = 1998-2002}} & \multicolumn{3}{c}{\texti
+> t{Sample years = 2003-2006}} \\" ///
+>             "\cmidrule(lr){2-4} \cmidrule(lr){5-7}") ///
+>     addnotes("This table reports estimates of a regression of passive mutual fund ownership, " /
+> //
+>              "scaled by its sample standard deviation, on board independence, separately for two
+>  sample periods." ///
+>              "Standard errors are clustered at the firm level and reported in parentheses. " ///
+>              "The symbols * \(p<0.10\), ** \(p<0.05\), *** \(p<0.01\) indicate significance leve
+> ls.")
+(output written to /Users/devin/Desktop/Passive/output/table5_raw.tex)
+
+. 
+end of do-file
+
+. 
+. do "${root}/do file/3table6.do"
+
+. **********************************************************************************************
+. * This Script is expected to output the Table 6
+. **********************************************************************************************
+. use "${root}/prepared data/mutualfund_v4.dta",clear
+
+. sum passive_pct
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ passive_pct |      2,924    3.130672    5.223634          0   26.92839
+
+. gen passive_scaled = passive_pct / r(sd)
+(2,712 missing values generated)
+
+. local xvariable1 passive_scaled lnmarketcap lnfloat
+
+. local xvariable2 passive_scaled lnmarketcap lnmarketcap_2 lnfloat
+
+. local xvariable3 passive_scaled lnmarketcap lnmarketcap_2 lnmarketcap_3 lnfloat
+
+. label variable passive_scaled "Passive\%"
+
+. reg PPILL `xvariable1' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(4, 167)         =       1.48
+                                                Prob > F          =     0.2119
+                                                R-squared         =     0.0380
+                                                Root MSE          =     .49331
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+         PPILL | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0303869   .0311289    -0.98   0.330    -.0918437      .03107
+   lnmarketcap |  -.1155932   .1154487    -1.00   0.318    -.3435203    .1123339
+       lnfloat |   .2152581     .15277     1.41   0.161    -.0863513    .5168675
+               |
+          YEAR |
+         2004  |  -.1285064    .113001    -1.14   0.257     -.351601    .0945881
+               |
+         _cons |  -.0493307   1.788238    -0.03   0.978    -3.579798    3.481136
+--------------------------------------------------------------------------------
+
+. est store table61
+
+. 
+. reg PPILL `xvariable2' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =       1.21
+                                                Prob > F          =     0.3057
+                                                R-squared         =     0.0390
+                                                Root MSE          =     .49368
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+         PPILL | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0309723   .0311721    -0.99   0.322    -.0925145      .03057
+   lnmarketcap |   1.714586   4.113148     0.42   0.677    -6.405882    9.835055
+ lnmarketcap_2 |  -.0427997   .0961181    -0.45   0.657    -.2325628    .1469634
+       lnfloat |    .233567   .1590496     1.47   0.144      -.08044    .5475739
+               |
+          YEAR |
+         2004  |   -.121215   .1147241    -1.06   0.292    -.3477115    .1052815
+               |
+         _cons |  -19.86761   44.64512    -0.45   0.657    -108.0092    68.27395
+--------------------------------------------------------------------------------
+
+. est store table62
+
+. 
+. reg PPILL `xvariable3' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(4, 167)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.0435
+                                                Root MSE          =     .49314
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+         PPILL | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |  -.0299324   .0310693    -0.96   0.337    -.0912717    .0314068
+   lnmarketcap |    161.725   143.6557     1.13   0.262    -121.8903    445.3402
+ lnmarketcap_2 |  -7.484129   6.681987    -1.12   0.264    -20.67618    5.707924
+ lnmarketcap_3 |   .1152786   .1035476     1.11   0.267    -.0891525    .3197097
+       lnfloat |    .244066   .1642219     1.49   0.139    -.0801525    .5682845
+               |
+          YEAR |
+         2004  |  -.1289502   .1161415    -1.11   0.268     -.358245    .1003445
+               |
+         _cons |  -1166.174   1029.011    -1.13   0.259    -3197.721    865.3729
+--------------------------------------------------------------------------------
+
+. est store table63
+
+. 
+. reg LSPMT `xvariable1' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(4, 167)         =       1.02
+                                                Prob > F          =     0.3961
+                                                R-squared         =     0.0205
+                                                Root MSE          =     .46801
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+         LSPMT | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |   .0101514   .0273414     0.37   0.711     -.043828    .0641308
+   lnmarketcap |  -.1488337    .093845    -1.59   0.115    -.3341092    .0364418
+       lnfloat |   .2518038   .1409622     1.79   0.076    -.0264938    .5301015
+               |
+          YEAR |
+         2004  |   .0989888   .1040931     0.95   0.343    -.1065191    .3044968
+               |
+         _cons |  -.1661868   1.870102    -0.09   0.929    -3.858276    3.525902
+--------------------------------------------------------------------------------
+
+. est store table64
+
+. 
+. reg LSPMT `xvariable2' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =       1.23
+                                                Prob > F          =     0.2952
+                                                R-squared         =     0.0351
+                                                Root MSE          =      .4651
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+         LSPMT | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |   .0122669   .0264725     0.46   0.644     -.039997    .0645307
+   lnmarketcap |  -6.762403   4.314862    -1.57   0.119    -15.28111    1.756303
+ lnmarketcap_2 |   .1546617   .1008828     1.53   0.127    -.0445083    .3538317
+       lnfloat |   .1856425   .1521932     1.22   0.224    -.1148282    .4861132
+               |
+          YEAR |
+         2004  |   .0726404   .1034378     0.70   0.483    -.1315739    .2768546
+               |
+         _cons |    71.4495   46.70675     1.53   0.128    -20.76229    163.6613
+--------------------------------------------------------------------------------
+
+. est store table65
+
+. 
+. reg LSPMT `xvariable3' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.0384
+                                                Root MSE          =     .46488
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+         LSPMT | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |   .0114283   .0259822     0.44   0.661    -.0398676    .0627242
+   lnmarketcap |  -135.7965   157.5594    -0.86   0.390    -446.8615    175.2685
+ lnmarketcap_2 |   6.155431   7.317588     0.84   0.401     -8.29147    20.60233
+ lnmarketcap_3 |  -.0929619   .1132314    -0.82   0.413    -.3165114    .1305876
+       lnfloat |    .177176   .1481179     1.20   0.233    -.1152489    .4696008
+               |
+          YEAR |
+         2004  |   .0788781   .1033978     0.76   0.447    -.1252571    .2830134
+               |
+         _cons |   995.8434   1130.419     0.88   0.380     -1235.91    3227.597
+--------------------------------------------------------------------------------
+
+. est store table66
+
+. 
+. esttab table61 table62 table63 table64 table65 table66 using "${root}/output/table6_raw.tex", //
+> /
+>     replace ///
+>     se star(* 0.10 ** 0.05 *** 0.01) ///
+>     b(3) se(3) ///
+>     mtitles("(1)" "(2)" "(3)" "(4)" "(5)" "(6)") ///
+>     label booktabs ///
+>     alignment(c) ///
+>     keep(passive_scaled) ///
+>     order(passive_scaled) ///
+>     stats(bandwidth poly_order float_control year_fixed N_firms N r2, ///
+>           labels("Bandwidth" "Polynomial order, \(N\)" "Float control" "Year fixed effects" ///
+>                  "# of firms" "Observations" "\textit{R-squared}") fmt(0 0 0 0 0 0 2)) ///
+>     prehead("\multicolumn{7}{c}{\textit{Dependent variable = PPILL and LSPMT}} \\" ///
+>             "\cmidrule(lr){2-7}" ///
+>             "& \multicolumn{3}{c}{\textit{PPILL}} & \multicolumn{3}{c}{\textit{LSPMT}} \\" ///
+>             "\cmidrule(lr){2-4} \cmidrule(lr){5-7}") ///
+>     addnotes("This table reports estimates of a regression of passive mutual fund ownership, " /
+> //
+>              "scaled by its sample standard deviation, on PPILL and LSPMT. " ///
+>              "Standard errors are clustered at the firm level (CUSIP) and reported in parenthese
+> s. " ///
+>              "The symbols * \(p<0.10\), ** \(p<0.05\), *** \(p<0.01\) indicate significance leve
+> ls.")
+(output written to /Users/devin/Desktop/Passive/output/table6_raw.tex)
+
+. 
+end of do-file
+
+. 
+. do "${root}/do file/3table7.do"
+
+. **********************************************************************************************
+. * This Script is expected to output the Table 7
+. **********************************************************************************************
+. use "${root}/prepared data/mutualfund_v4.dta",clear
+
+. sum passive_pct
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+ passive_pct |      2,924    3.130672    5.223634          0   26.92839
+
+. gen passive_scaled = passive_pct / r(sd)
+(2,712 missing values generated)
+
+. local xvariable1 passive_scaled lnmarketcap lnfloat
+
+. local xvariable2 passive_scaled lnmarketcap lnmarketcap_2 lnfloat
+
+. local xvariable3 passive_scaled lnmarketcap lnmarketcap_2 lnmarketcap_3 lnfloat
+
+. label variable passive_scaled "Passive\%"
+
+. reg DUALCLASS `xvariable1' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(4, 167)         =       1.13
+                                                Prob > F          =     0.3441
+                                                R-squared         =     0.0369
+                                                Root MSE          =     .35227
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+     DUALCLASS | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |   .0448129   .0256888     1.74   0.083    -.0059037    .0955295
+   lnmarketcap |   .0640237   .0951525     0.67   0.502     -.123833    .2518805
+       lnfloat |  -.1194856   .1159787    -1.03   0.304    -.3484589    .1094877
+               |
+          YEAR |
+         2004  |  -.0220461   .0759956    -0.29   0.772     -.172082    .1279898
+               |
+         _cons |   .4329976   1.246419     0.35   0.729    -2.027771    2.893766
+--------------------------------------------------------------------------------
+
+. est store table71
+
+. 
+. reg DUALCLASS `xvariable2' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =       2.23
+                                                Prob > F          =     0.0535
+                                                R-squared         =     0.0400
+                                                Root MSE          =     .35214
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+     DUALCLASS | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |   .0440698   .0258094     1.71   0.090    -.0068851    .0950246
+   lnmarketcap |   2.387316   4.221948     0.57   0.573    -5.947952    10.72258
+ lnmarketcap_2 |  -.0543314   .1005438    -0.54   0.590    -.2528321    .1441693
+       lnfloat |  -.0962437   .1536395    -0.63   0.532    -.3995697    .2070824
+               |
+          YEAR |
+         2004  |  -.0127901    .081726    -0.16   0.876    -.1741394    .1485592
+               |
+         _cons |  -24.72501   46.10519    -0.54   0.592    -115.7491    66.29913
+--------------------------------------------------------------------------------
+
+. est store table72
+
+. 
+. reg DUALCLASS `xvariable3' i.YEAR if in_bandwidth==1, cluster(CUSIP)
+
+Linear regression                               Number of obs     =        401
+                                                F(5, 167)         =          .
+                                                Prob > F          =          .
+                                                R-squared         =     0.0554
+                                                Root MSE          =     .34976
+
+                                 (Std. err. adjusted for 168 clusters in CUSIP8)
+--------------------------------------------------------------------------------
+               |               Robust
+     DUALCLASS | Coefficient  std. err.      t    P>|t|     [95% conf. interval]
+---------------+----------------------------------------------------------------
+passive_scaled |    .045437   .0253856     1.79   0.075    -.0046811    .0955551
+   lnmarketcap |   212.7751   115.9553     1.83   0.068    -16.15201    441.7023
+ lnmarketcap_2 |  -9.838478   5.433587    -1.81   0.072    -20.56585    .8888958
+ lnmarketcap_3 |   .1515727   .0848525     1.79   0.076    -.0159491    .3190946
+       lnfloat |  -.0824391   .1351274    -0.61   0.543    -.3492173     .184339
+               |
+          YEAR |
+         2004  |  -.0229607   .0803189    -0.29   0.775    -.1815319    .1356106
+               |
+         _cons |  -1531.933   823.8216    -1.86   0.065     -3158.38    94.51427
+--------------------------------------------------------------------------------
+
+. est store table73
+
+. 
+. esttab table71 table72 table73 using "${root}/output/table7_raw.tex", ///
+>     replace ///
+>     se star(* 0.10 ** 0.05 *** 0.01) ///
+>     b(3) se(3) ///
+>     mtitles("(1)" "(2)" "(3)") ///
+>     label booktabs ///
+>     alignment(c) ///
+>     keep(passive_scaled) ///
+>     order(passive_scaled) ///
+>     stats(bandwidth order_poly float_control year_fixed N_firms N r2, ///
+>           labels("Bandwidth" "Polynomial order, \(N\)" "Float control" "Year fixed effects" ///
+>                  "# of firms" "Observations" "\textit{R-squared}") fmt(0 0 0 0 0 0 2)) ///
+>     prehead("\multicolumn{4}{c}{\textit{Dependent variable = Indicator for dual class shares}} \
+> \")
+(output written to /Users/devin/Desktop/Passive/output/table7_raw.tex)
+
+. 
+end of do-file
+
+. 
+. log close
+      name:  <unnamed>
+       log:  /Users/devin/Desktop/Passive/log/log20250227.log
+  log type:  text
+ closed on:  27 Feb 2025, 17:24:00
+--------------------------------------------------------------------------------------------------
