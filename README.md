@@ -25,5 +25,5 @@ However, to fully capture the passive mutual fund and avoid the mismatch because
 ```
 replace passive_flag = 1 if regexm(fund_name, "index|idx|indx|ind_|russell|s & p|s and p|s&p|sandp|sp|dow|dj|msci|bloomberg|kbw|nasdaq|nyse|stoxx|ftse|wilshire|morningstar|100|400|500|600|900|1000|1500|2000|5000")
 ```
-
+the regular expression we used here ensures the clear match.
 
