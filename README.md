@@ -30,7 +30,7 @@ the regular expression we used here ensures the clear match.
 ```
 replace fund_type = "Unclassified" if _merge == 2
 ```
-## Potential Problems in our replication
+## Key step in imputing the variable and expansion of dataset
 To impute the missing reports before May 2005 like Appel et al(2016), we first conduct:
 ```
 tsfill, full
