@@ -34,6 +34,7 @@ the regular expression we used here ensures the clear match.
 replace fund_type = "Unclassified" if _merge == 2
 ```
 It is well worth noted that, the order of identifying `unclassified` and `active` fund type matters, and the process in Appel et al.(2016) could be shown as following:
+
 <img width="498" alt="image" src="https://github.com/user-attachments/assets/2efa3362-4101-4b3b-b13c-370721e8041e" />
 
 ## Key step in imputing the variable and expansion of dataset
