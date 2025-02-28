@@ -19,6 +19,8 @@ By running `0main.do`, you are expected to get all the results of this replicati
  -  `2roa` generates roa from the data in Compustat
  -  `2thomason` generates fund ownership percentage variables and merge all the data, and winsorize at 1%
 - `3tablei*` ($i=1,2,...,7$)ouput the corresponding table in Appel et al(2016)
+<img width="393" alt="image" src="https://github.com/user-attachments/assets/ae8aff49-7db7-41e3-a118-e1ef40c0e2b2" />
+
 ## Key Process in identifying the type of mutual fund
 - Following Appel et al.(2016), we first generate *passive flag=0* to indicates whether a mutual fund is a passive fund or not.
 - And the strings we use to identify index funds are: Index, Idx, Indx, Ind_ (where_ indicates a space), Russell, S & P, S and P, S&P, SandP, SP, DOW, Dow, DJ, MSCI, Bloomberg, KBW, NASDAQ, NYSE, STOXX, FTSE, Wilshire, Morningstar, 100, 400, 500, 600, 900, 1000, 1500, 2000, and 5000.
